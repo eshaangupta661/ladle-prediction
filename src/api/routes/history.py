@@ -17,7 +17,7 @@ def as_record(row):
 
 @router.get("", response_model=list[PredictionRecord])
 def list_predictions(ladle_no: Optional[int] = None, limit: int = Query(50, ge=1, le=500), db: Session = Depends(get_db)):
-    query = db.query(Prediction).order_by(Prediction.requested_at.desc())
+    query = db.query(Prediction).order_by(Prediction.id.desc())
     if ladle_no is not None:
         query = query.filter(Prediction.ladle_no == ladle_no)
     return [as_record(row) for row in query.limit(limit).all()]

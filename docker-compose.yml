@@ -1,15 +1,11 @@
-version: "3.9"
-
 services:
   api:
     build: .
     container_name: ladle_api
     ports:
       - "8000:8000"
-    env_file:
-      - .env
     environment:
-      DATABASE_URL: postgresql://ladle_user:ladle_pass@db:5432/ladle_db
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ladle_user}:${POSTGRES_PASSWORD:-ladle_pass}@db:5432/${POSTGRES_DB:-ladle_db}
     depends_on:
       db:
         condition: service_healthy
@@ -21,15 +17,15 @@ services:
     image: postgres:15-alpine
     container_name: ladle_db
     environment:
-      POSTGRES_DB:       ladle_db
-      POSTGRES_USER:     ladle_user
-      POSTGRES_PASSWORD: ladle_pass
+      POSTGRES_DB:       ${POSTGRES_DB:-ladle_db}
+      POSTGRES_USER:     ${POSTGRES_USER:-ladle_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ladle_pass}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ladle_user -d ladle_db"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 5

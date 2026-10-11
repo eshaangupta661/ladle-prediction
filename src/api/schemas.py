@@ -13,6 +13,9 @@ class PredictionRequest(BaseModel):
     purging_time: float = Field(..., ge=0, le=240)
     treatment_time: float = Field(..., ge=0, le=240)
     new_campaign: bool = Field(False, description="Set true only immediately after a confirmed reline.")
+    starting_life: Optional[int] = Field(None, ge=1, description=(
+        "Ladle life counter for this heat when a ladle already in service is first tracked. "
+        "Used only on the first heat of a campaign; later heats count on from it."))
 
 
 class PredictionResponse(BaseModel):
@@ -38,3 +41,4 @@ class HealthResponse(BaseModel):
     model_version: Optional[str] = None
     model_name: str
     test_r2: float
+    test_mae: Optional[float] = None

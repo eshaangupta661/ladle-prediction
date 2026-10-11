@@ -18,32 +18,32 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
-      - name: Cache pip packages
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          cache: pip
 
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Run unit tests
+        run: pytest -v --tb=short
+
       - name: Train time-series model
         run: PYTHONPATH=src python -m pipeline.train
-
-      - name: Run unit tests
-        run: PYTHONPATH=src pytest tests -v --tb=short
 
       - name: Build Docker image
         run: docker build -t ladle-prediction:${{ github.sha }} .
 
-      - name: Verify Docker image starts
+      - name: Verify API serves predictions
         run: |
-          docker run -d --name test_container \
-            -e DATABASE_URL=sqlite:///./test.db \
-            -p 8000:8000 \
-            ladle-prediction:${{ github.sha }} || true
-          sleep 5
-          docker logs test_container
-          docker stop test_container || true
-          docker rm test_container || true
+          docker run -d --name test_container -e DATABASE_URL=sqlite:///./test.db \
+            -p 8000:8000 ladle-prediction:${{ github.sha }}
+          for attempt in $(seq 1 30); do
+            curl -sf http://localhost:8000/health && break
+            sleep 2
+          done
+          curl -sf http://localhost:8000/predict/health | grep -q '"status":"ok"'
+          curl -sf -X POST http://localhost:8000/predict -H "Content-Type: application/json" \
+            -d '{"ladle_no": 1, "opening_temp": 1550, "despatch_temp": 1580, "arcing_time": 20, "purging_time": 12, "treatment_time": 40}'
+
+      - name: Show container logs
+        if: always()
+        run: docker logs test_container || true

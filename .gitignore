@@ -4,16 +4,17 @@
 __pycache__/
 .pytest_cache/
 
-# Data (raw data stays local)
-data/raw/
+# Data: raw plant data stays local; the synthetic sample is committed so CI can train
+data/raw/*
+!data/raw/ladle_data_synthetic.xlsx
 data/processed/
 
-# Model artifacts (committed selectively after training)
+# Model artifacts (rebuilt by `python -m pipeline.train`)
 src/models/*.pkl
 src/models/*.json
 
-# Test artifacts
-test_temp.db
+# Local databases
+*.db
 
 # Python virtual environment
 venv/

@@ -7,8 +7,10 @@ import pandas as pd
 REQUIRED_COLUMNS = {"date", "shift", "heat_no", "ladle_no", "ladle_life",
                     "opening_temp", "despatch_temp", "arcing_time",
                     "purging_time", "treatment_time"}
-NUMERIC_COLUMNS = ["ladle_no", "ladle_life", "opening_temp", "despatch_temp",
-                   "arcing_time", "purging_time", "treatment_time"]
+PROCESS_COLUMNS = ["opening_temp", "despatch_temp", "arcing_time", "purging_time", "treatment_time"]
+NUMERIC_COLUMNS = ["ladle_no", "ladle_life", *PROCESS_COLUMNS]
+VALID_RANGES = {"opening_temp": (1400, 1700), "despatch_temp": (1400, 1700),
+                "arcing_time": (0, 240), "purging_time": (0, 240), "treatment_time": (0, 240)}
 COLUMN_ALIASES = {
     "ldl_no": "ladle_no", "opening_temp_": "opening_temp",
     "despatch_temp_": "despatch_temp", "lf_arcing_time_mins": "arcing_time",
@@ -36,9 +38,11 @@ def _normalise_columns(frame):
                                  if key in frame.columns})
 
 
-def load_and_clean(path, require_target=True):
+def load_and_clean(path):
     """Load Excel/CSV, clean values, and sort records without using metadata as features.
 
+    Every heat with a date and ladle number is kept, even when its life or a process
+    reading is missing: dropping heats would break the per-campaign heat count.
     ``date``, ``shift``, and ``heat_no`` are retained only to establish chronology.
     """
     path = Path(path)
@@ -55,24 +59,21 @@ def load_and_clean(path, require_target=True):
     frame["shift"] = frame["shift"].astype(str).str.strip().str.upper()
     frame.loc[frame["shift"].isin(["", "NAN", "NONE"]), "shift"] = np.nan
 
-    # A target is required for learning, whereas API inference has no target.
-    core = ["date", "ladle_no"] + (["ladle_life"] if require_target else [])
-    frame = frame.dropna(subset=core).copy()
-    frame = frame[(frame["ladle_no"] > 0) & (frame["opening_temp"].between(1400, 1700, inclusive="both"))
-                  & (frame["despatch_temp"].between(1400, 1700, inclusive="both"))]
-    for column in ["arcing_time", "purging_time", "treatment_time"]:
-        frame = frame[frame[column].isna() | frame[column].between(0, 240, inclusive="both")]
+    frame = frame.dropna(subset=["date", "ladle_no"])
+    frame = frame[frame["ladle_no"] > 0].copy()
+    # Out-of-range readings are treated as missing and imputed, not dropped with their heat.
+    for column, (low, high) in VALID_RANGES.items():
+        frame.loc[~frame[column].between(low, high, inclusive="both"), column] = np.nan
+    frame.loc[frame["ladle_life"] < 1, "ladle_life"] = np.nan
 
     frame = frame.drop_duplicates(subset=["ladle_no", "date", "heat_no"], keep="last")
     shift_order = {"A": 0, "B": 1, "C": 2}
     frame["_shift_order"] = frame["shift"].map(shift_order).fillna(99)
     frame = frame.sort_values(["ladle_no", "date", "_shift_order", "heat_no"]).reset_index(drop=True)
 
-    process_columns = ["opening_temp", "despatch_temp", "arcing_time", "purging_time", "treatment_time"]
-    for column in process_columns:
+    for column in PROCESS_COLUMNS:
         by_ladle = frame.groupby("ladle_no")[column].transform("median")
         frame[column] = frame[column].fillna(by_ladle).fillna(frame[column].median())
     frame["ladle_no"] = frame["ladle_no"].astype(int)
-    if require_target:
-        frame["ladle_life"] = frame["ladle_life"].astype(float)
+    frame["ladle_life"] = frame["ladle_life"].astype(float)
     return frame.drop(columns="_shift_order")
