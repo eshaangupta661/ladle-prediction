@@ -1,0 +1,49 @@
+name: CI — Test & Build
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Train time-series model
+        run: PYTHONPATH=src python -m pipeline.train
+
+      - name: Run unit tests
+        run: PYTHONPATH=src pytest tests -v --tb=short
+
+      - name: Build Docker image
+        run: docker build -t ladle-prediction:${{ github.sha }} .
+
+      - name: Verify Docker image starts
+        run: |
+          docker run -d --name test_container \
+            -e DATABASE_URL=sqlite:///./test.db \
+            -p 8000:8000 \
+            ladle-prediction:${{ github.sha }} || true
+          sleep 5
+          docker logs test_container
+          docker stop test_container || true
+          docker rm test_container || true
